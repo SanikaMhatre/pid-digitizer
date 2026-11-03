@@ -1,0 +1,47 @@
+[project]
+name = "pid-digitizer"
+version = "0.1.0"
+description = "Agentic P&ID digitizer with a deterministic design-rule checker, built on Meta's Muse Spark Open and SAM 3.1"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "scipy",
+  "scikit-image",
+  "pillow",
+  "pydantic>=2",
+  "pyyaml",
+  "httpx",
+  "fastapi",
+  "uvicorn",
+  "python-multipart",
+  "streamlit",
+]
+
+[project.optional-dependencies]
+modal = ["modal"]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pid = ["rules/*.yaml"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "UP007", "UP045", "B008", "B904"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pid"]

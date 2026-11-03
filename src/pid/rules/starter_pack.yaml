@@ -1,0 +1,79 @@
+# Illustrative starter rule pack.
+# Real plants apply their own engineering standards: treat these as a configurable
+# example of the kind of checks the engine runs, NOT as a statement of safety compliance.
+- id: R1-UNIQUE-TAG
+  severity: error
+  description: Tags must be unique on a sheet
+  applies_to: {has: tag}
+  require: {unique: tag}
+
+- id: R2-TAG-PRESENT
+  severity: warning
+  description: Every symbol must carry a tag
+  applies_to: {}
+  require: {has_attr: tag}
+
+- id: R3-DANGLING-PIPE
+  severity: error
+  description: Pipe with a free end (attached to fewer than two symbols)
+  applies_to: {kind: net}
+  require: {min_symbols: 2}
+
+- id: R4-PUMP-CHECK-VALVE
+  severity: warning
+  description: Pump discharge needs a check valve within 2 hops downstream
+  applies_to: {class: pump}
+  require:
+    path:
+      direction: downstream
+      edge_type: process
+      max_hops: 2
+      reaches: {class: check_valve}
+
+- id: R5A-PUMP-SUCTION-ISOLATION
+  severity: warning
+  description: Pump suction needs an isolation valve directly upstream
+  applies_to: {class: pump}
+  require:
+    path:
+      direction: upstream
+      edge_type: process
+      max_hops: 1
+      reaches: {class_in: [valve, control_valve]}
+
+- id: R5B-PUMP-DISCHARGE-ISOLATION
+  severity: warning
+  description: Pump discharge needs an isolation valve within 2 hops downstream
+  applies_to: {class: pump}
+  require:
+    path:
+      direction: downstream
+      edge_type: process
+      max_hops: 2
+      reaches: {class_in: [valve, control_valve]}
+
+- id: R6-CONTROL-VALVE-LOOP
+  severity: error
+  description: Control valve must be linked to an instrument by a signal line
+  applies_to: {class: control_valve}
+  require:
+    path:
+      edge_type: signal
+      max_hops: 1
+      reaches: {class: instrument}
+
+- id: R7-VESSEL-RELIEF
+  severity: warning
+  description: Pressure vessel needs a relief valve connected
+  applies_to: {class: vessel}
+  require:
+    path:
+      edge_type: process
+      max_hops: 1
+      reaches: {class: relief_valve}
+
+- id: R8-ISOLATED-SYMBOL
+  severity: error
+  description: Symbol is not connected to anything
+  applies_to: {}
+  require: {connected: true}
