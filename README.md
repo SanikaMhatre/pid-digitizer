@@ -162,9 +162,5 @@ tests/                 82 tests
 docs/                  RUNBOOK.md · DEMO_SCRIPT.md
 ```
 
-## Development note
-
-This project was developed with AI coding assistance (Claude). Record your own contribution and decisions in the commit history and the
-hackathon submission as the rules require.
 
 *Built with Muse Spark Open.*
