@@ -20,30 +20,61 @@ is locked in pixels, which blocks plant modifications, safety reviews and digita
 
 ---
 
-## Quickstart (no API keys needed)
+## Setup
 
+**1. Requirements:** Python 3.10 or newer, and a Meta Model API account (dev.meta.ai) for the live models.
+
+**2. Create an environment and install**
 ```bash
-pip install -e ".[dev]"
-pytest -q                                           # 87 tests
-python -m pid.eval.run_eval --mode simulated --n 14 # classical stages only
-streamlit run src/pid/app/ui.py                     # choose "Offline simulated" in the sidebar
-python demo/make_demo_assets.py                     # clean_sheet.png, planted_errors.png, noisy_scan.png, legend.png
+conda create -n pid python=3.12 -y     # or: python -m venv .venv  and activate it
+conda activate pid
+cd pid-digitizer                       # the project folder
+pip install -e ".[dev]"                # installs the project and its dependencies from pyproject.toml, plus pytest
+pytest -q                              # 89 passed means the install works (no API key needed for this)
 ```
 
-## Going live (credits needed)
+**3. Get an API key**
+1. Sign in at [dev.meta.ai](https://dev.meta.ai) and open **API keys** in the left menu.
+2. Click **Create API key**, name it, and copy the key right away (it is shown once).
+3. Check **Billing** or **Usage** to confirm your credits are on the account.
 
+**4. Configure**
 ```bash
-cp .env.example .env     # fill LLM_API_KEY; export the variables or use your shell's dotenv loader
+cp .env.example .env                   # Windows: copy .env.example .env
+```
+Open `.env` and set:
+```
+LLM_API_KEY=<your key>
+LLM_BASE_URL=https://api.meta.ai/v1
+LLM_MODEL=muse-spark-1.3
+```
+`.env` is read automatically from the folder you run commands in, and is git-ignored. Do not commit or share the key.
+Use the Standard model, not `muse-spark-1.3-contributor`: Contributor mode lets Meta train on your inputs.
+SAM 3.1 uses the same key and base URL by default.
+
+**5. Check the connection**
+```bash
+python -m pid.smoke llm                # Muse model: basic call, vision, strict JSON, tool calling, with cost
+python -m pid.smoke localize           # SAM 3.1: box recall on generated sheets, with cost
 ```
 
-1. **Muse model smoke test**: `python -m pid.smoke llm` → PASS/FAIL for basic call, `reasoning_effort`, vision classification,
-   strict JSON schema, tool calling, image in follow-up; prints tokens and dollars used.
-2. **Localizer check**: `python -m pid.smoke localize` → box recall (IoU ≥ 0.5) against generated ground truth, plus cost per sheet
-   (`--localizer muse` to test the Muse model as the localizer instead). The recall is the ceiling for everything downstream.
-3. **Measure**: `python -m pid.eval.run_eval --mode live --n 6`
-   - ablations: `--no-agent` (without verification), `--localizer muse` (Muse model finds the boxes instead of SAM), `--scan-noise`
-   - held-out numbers: `--split test` (seeds ≥ 1000; do not tune on them)
-4. **Use**: `streamlit run src/pid/app/ui.py` (Live models) or `uvicorn pid.app.api:app`.
+**6. Run it**
+```bash
+streamlit run src/pid/app/ui.py        # web UI: choose "Live models" in the sidebar, upload a drawing
+uvicorn pid.app.api:app                # or the HTTP API (docs at /docs)
+python demo/make_demo_assets.py        # sample drawings: clean_sheet.png, planted_errors.png, noisy_scan.png
+```
+
+**7. Measure**
+```bash
+python -m pid.eval.run_eval --mode live --n 6              # SAM + Muse + agent
+python -m pid.eval.run_eval --mode live --n 6 --no-agent   # ablation: without verification
+python -m pid.eval.run_eval --mode live --n 6 --localizer muse   # ablation: Muse model finds the boxes
+python -m pid.eval.run_eval --mode live --split test       # held-out sheets (seeds >= 1000; do not tune on them)
+```
+
+**Without any key:** `python -m pid.eval.run_eval --mode simulated` and the UI's "Offline simulated" mode run the tracing and rules
+with the model stages replaced by ground truth. They need no key, and their scores are not model accuracy.
 
 ## Architecture
 
@@ -160,9 +191,13 @@ src/pid/
   eval/                metrics.py · run_eval.py
   app/                 api.py (FastAPI) · ui.py (Streamlit)
   smoke.py             live smoke tests
-tests/                 87 tests
+tests/                 89 tests
 docs/                  RUNBOOK.md · DEMO_SCRIPT.md
 ```
 
+## Development note
+
+This project was developed with AI coding assistance (Claude). Record your own contribution and decisions in the commit history and the
+hackathon submission as the rules require.
 
 *Built with Muse Spark Open.*
