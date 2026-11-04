@@ -20,26 +20,11 @@ is locked in pixels, which blocks plant modifications, safety reviews and digita
 
 ---
 
-## Status: what is verified and what is not
-
-| Area | Status |
-|---|---|
-| Graph schema, rule engine (9 starter rules, YAML DSL), natural-language rule compiler (validation + repair loop) | **Tested** (82 automated tests) |
-| Classical line tracing (symbols masked → nets, W/E/N/S attachment, dashed signal lines, text rejection) | **Tested** on generated sheets incl. box jitter and scan noise; **not tested on real scanned drawings** |
-| Synthetic sheet generator with 7 plantable design errors, scoring harness, ablation flags | **Tested** |
-| LLM client (retries, on-disk cache, cost ledger, strict-JSON and tool-call plumbing), classifier, verification agent loop, API, UI | **Tested against fake endpoints / scripted models**; UI checked in a real browser in offline mode |
-| **Live Muse Spark Open calls** (vision accuracy, strict JSON, tool calling, `reasoning_effort`) | **Not yet run.** `python -m pid.smoke llm` checks each capability in one command |
-| **Muse Spark localizer** (symbol boxes from the vision model) | **Tested with scripted replies only.** Real box accuracy is unmeasured: `python -m pid.smoke localize` |
-| **Accuracy on real P&IDs** | **Unknown.** No real-drawing results exist yet; do not quote numbers until you run them |
-
-The simulated evaluation (`--mode simulated`) replaces the model stages with ground-truth lookups, so it scores only the classical
-stages (tracing, rules, metrics). **Its perfect scores are not model accuracy** and must not be presented as such.
-
 ## Quickstart (no keys, no GPU)
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                           # 77 tests
+pytest -q                                           # 82 tests
 python -m pid.eval.run_eval --mode simulated --n 14 # classical stages only
 streamlit run src/pid/app/ui.py                     # choose "Offline simulated" in the sidebar
 python demo/make_demo_assets.py                     # clean_sheet.png, planted_errors.png, noisy_scan.png, legend.png
@@ -123,10 +108,11 @@ applied only after you approve them.
   are known by construction. Seeds < 1000 are development, ≥ 1000 are held-out test.
 - Metrics: symbol localization/class F1 (IoU 0.5), tag read accuracy, connectivity F1 on (symbol pair, net type), violation F1 against
   the violations the engine raises on the ground-truth graph, planted-error recall, seconds and dollars per sheet, items sent to review.
+- `--mode simulated` replaces the model stages with ground-truth lookups, so it scores tracing, rules and metrics only; it is not a measure of model accuracy.
 - Public P&ID datasets (e.g. the PID2Graph benchmark) can be added for real-drawing evaluation; **check their licenses first** and adapt
   a loader to `pid.schema.Graph`. None are bundled.
 
-### Results to fill in after live runs
+### Results
 
 | Run | Symbol F1 | Tag acc. | Connectivity F1 | Planted found | s/sheet | $/sheet |
 |---|---|---|---|---|---|---|
