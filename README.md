@@ -3,7 +3,7 @@
 **Scanned engineering drawing in → verified graph, bill of materials and design-rule violations out.**
 
 Built for the Meta Global AI Developer Hackathon (Push the Frontier: manufacturing and energy).
-**Built with Muse Spark Open.** Uses SAM 3.1 for localization.
+**Built with Muse Spark Open.** Muse-native: one Muse Spark Open endpoint finds the symbols, reads them and verifies uncertain ones; no other model or GPU service.
 
 Process plants hold decades of drawings as images. Their structure (which pump feeds which vessel, which valves isolate what)
 is locked in pixels, which blocks plant modifications, safety reviews and digital twins. This project reads a P&ID and produces:
@@ -13,7 +13,7 @@ is locked in pixels, which blocks plant modifications, safety reviews and digita
 3. an **annotated overlay** of the original drawing
 4. **design-rule violations**, each pointing at the exact place on the drawing; new rules can be written in plain English
 
-> **Design principle: models propose, deterministic code decides.** SAM 3.1 and Muse Spark Open produce candidate symbols, tags
+> **Design principle: models propose, deterministic code decides.** Muse Spark Open produces candidate symbols, tags
 > and links with confidences. A verification agent re-examines the uncertain ones with tools. The rule engine that raises violations
 > is ordinary code over the graph, so every finding is reproducible, testable and auditable. A language model can *author* a rule,
 > but it can never decide whether a rule is violated.
@@ -24,12 +24,12 @@ is locked in pixels, which blocks plant modifications, safety reviews and digita
 
 | Area | Status |
 |---|---|
-| Graph schema, rule engine (9 starter rules, YAML DSL), natural-language rule compiler (validation + repair loop) | **Tested** (77 automated tests) |
+| Graph schema, rule engine (9 starter rules, YAML DSL), natural-language rule compiler (validation + repair loop) | **Tested** (82 automated tests) |
 | Classical line tracing (symbols masked → nets, W/E/N/S attachment, dashed signal lines, text rejection) | **Tested** on generated sheets incl. box jitter and scan noise; **not tested on real scanned drawings** |
 | Synthetic sheet generator with 7 plantable design errors, scoring harness, ablation flags | **Tested** |
 | LLM client (retries, on-disk cache, cost ledger, strict-JSON and tool-call plumbing), classifier, verification agent loop, API, UI | **Tested against fake endpoints / scripted models**; UI checked in a real browser in offline mode |
 | **Live Muse Spark Open calls** (vision accuracy, strict JSON, tool calling, `reasoning_effort`) | **Not yet run.** `python -m pid.smoke llm` checks each capability in one command |
-| **SAM 3.1 on Modal** | **Written, not yet run.** The adapter for SAM's output format must be confirmed with `modal run infra/modal_sam.py::inspect` |
+| **Muse Spark localizer** (symbol boxes from the vision model) | **Tested with scripted replies only.** Real box accuracy is unmeasured: `python -m pid.smoke localize` |
 | **Accuracy on real P&IDs** | **Unknown.** No real-drawing results exist yet; do not quote numbers until you run them |
 
 The simulated evaluation (`--mode simulated`) replaces the model stages with ground-truth lookups, so it scores only the classical
@@ -53,30 +53,20 @@ cp .env.example .env     # fill LLM_API_KEY; export the variables or use your sh
 
 1. **Muse Spark Open smoke test**: `python -m pid.smoke llm` → PASS/FAIL for basic call, `reasoning_effort`, vision classification,
    strict JSON schema, tool calling, image in follow-up; prints tokens and dollars used.
-2. **Deploy SAM 3.1**: request access to the gated weights on Hugging Face, then
-   ```bash
-   pip install modal && modal setup
-   modal secret create huggingface-secret HF_TOKEN=hf_xxx
-   modal deploy infra/modal_sam.py
-   modal run infra/modal_sam.py::inspect --image demo/clean_sheet.png     # confirm SAM's output keys / shapes
-   python -m pid.smoke sam                                                # localization recall on generated sheets
-   ```
-   Set a spend limit in the Modal dashboard first. The container scales to zero when idle.
-3. **Measure**: `python -m pid.eval.run_eval --mode live --n 6 --segmenter modal`
-   - ablations: `--no-agent` (without verification), `--segmenter vlm` (VLM-box fallback), `--scan-noise`
+2. **Localizer check**: `python -m pid.smoke localize` → box recall (IoU ≥ 0.5) against generated ground truth, plus cost per sheet.
+   Read the number before trusting the pipeline: it is the ceiling for everything downstream.
+3. **Measure**: `python -m pid.eval.run_eval --mode live --n 6`
+   - ablations: `--no-agent` (without verification), `--scan-noise`
    - held-out numbers: `--split test` (seeds ≥ 1000; do not tune on them)
 4. **Use**: `streamlit run src/pid/app/ui.py` (Live models) or `uvicorn pid.app.api:app`.
-
-If SAM underperforms on thin lines or unusual symbols, the localizer is pluggable: `--segmenter vlm` uses the vision model to
-propose boxes; the classical tracer works with any box source.
 
 ## Architecture
 
 ```
 sheet image
   │
-  ├─ localize ── SAM 3.1 (Modal GPU), tiled, text prompts + self-exemplar refinement ─┐   (or VLM-box fallback)
-  │                                                                                    ▼
+  ├─ localize ── Muse Spark Open vision, tiled, per-tile symbol boxes in strict JSON, NMS-merged
+  │
   ├─ classify ── Muse Spark Open vision + strict JSON schema: class, tag, confidences (parallel, cached)
   │
   ├─ trace ───── classical CV: mask symbols → bridge dashes → connected components → nets with W/E/N/S attachments
@@ -94,7 +84,9 @@ sheet image
 **Why nets, not edges.** A tee feeding two valves is one net with three attachments, not a clique of edges. Flow direction comes from the
 side a pipe meets a symbol (west = inlet, east = outlet), which is what lets rules say "downstream of the pump".
 
-### Meta models and their jobs
+### Muse-native design: Muse Spark's jobs
+
+Every model step runs on Muse Spark Open. There is no separate detector to host, and drawings go to one service only.
 
 | Model | Role |
 |---|---|
@@ -102,7 +94,7 @@ side a pipe meets a symbol (west = inlet, east = outlet), which is what lets rul
 | Muse Spark Open (reasoning levels) | low for routine crops; medium/high for disputed items in the verification loop |
 | Muse Spark Open (tool calling) | the verification agent |
 | Muse Spark Open (structured output) | schema-constrained classification; natural-language → rule DSL |
-| SAM 3.1 | promptable concept segmentation to find symbol candidates on large sheets |
+| Muse Spark Open (vision, tiled) | localization: finds symbol bounding boxes tile by tile |
 
 ## Rules
 
@@ -138,9 +130,9 @@ applied only after you approve them.
 
 | Run | Symbol F1 | Tag acc. | Connectivity F1 | Planted found | s/sheet | $/sheet |
 |---|---|---|---|---|---|---|
-| live, SAM + Muse Spark Open + agent | | | | | | |
+| live, Muse Spark Open + agent | | | | | | |
 | live, no agent | | | | | | |
-| live, VLM-box localizer | | | | | | |
+| live, with scan noise | | | | | | |
 
 ## Security and privacy
 
@@ -172,7 +164,7 @@ src/pid/
   rules/               engine.py · starter_pack.yaml · nl_compiler.py
   trace.py             classical net tracing
   classify.py          Muse Spark Open classifier (+ simulated stand-in for tests)
-  segment/             SAM (Modal client) · VLM-box fallback · NMS/tiling · oracle (tests)
+  segment/             Muse Spark localizer · NMS/tiling · oracle (tests)
   agent.py             verification agent
   pipeline.py          orchestration, warnings, cost accounting
   models/llm.py        OpenAI-compatible client: retries, cache, ledger
@@ -180,8 +172,7 @@ src/pid/
   eval/                metrics.py · run_eval.py
   app/                 api.py (FastAPI) · ui.py (Streamlit)
   smoke.py             live smoke tests
-infra/modal_sam.py     SAM 3.1 GPU function
-tests/                 77 tests
+tests/                 82 tests
 docs/                  RUNBOOK.md · DEMO_SCRIPT.md
 ```
 

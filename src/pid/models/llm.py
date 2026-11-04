@@ -1,6 +1,6 @@
 """OpenAI-compatible chat client with on-disk caching and a cost ledger.
 
-Works with any OpenAI-style /chat/completions endpoint: Baseten, Modal, Fireworks, or the Meta
+Works with any OpenAI-style /chat/completions endpoint: Baseten, Fireworks, or the Meta
 Model API (set LLM_BASE_URL accordingly).  Two features exist to protect a small credit budget:
 
   * every request is cached on disk by a hash of the payload, so re-running a pipeline during
@@ -12,7 +12,7 @@ Environment variables
   LLM_BASE_URL   default https://inference.baseten.co/v1
   LLM_API_KEY    required for live calls
   LLM_MODEL      default meta-models/muse-spark-open-1026   (the hackathon model id on Baseten)
-  LLM_PRICE_IN   USD per 1M input tokens  (default 1.25, the rate listed for Modal's shared endpoint)
+  LLM_PRICE_IN   USD per 1M input tokens  (placeholder 1.25: set your provider's real price)
   LLM_PRICE_OUT  USD per 1M output tokens (default 4.25)
   PID_CACHE_DIR  default .cache/llm
 """

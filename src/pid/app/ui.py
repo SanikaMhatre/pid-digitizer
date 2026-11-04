@@ -1,7 +1,7 @@
 """Streamlit interface.   streamlit run src/pid/app/ui.py
 
 Two modes
-  * Live models      - Muse Spark Open (LLM_* env) + SAM 3.1 on Modal (or the VLM fallback localizer)
+  * Live models      - Muse Spark Open (LLM_* env) localizes, reads and verifies
   * Offline simulated - model stages are replaced by ground-truth lookups on a GENERATED sheet.
                         For developing the interface and rehearsing the demo without credits.
                         Clearly labelled; its numbers measure the classical stages only.
@@ -69,7 +69,6 @@ with st.sidebar:
     )
     live = mode == "Live models"
     if live:
-        segmenter = st.selectbox("Localizer", ["modal", "vlm"], help="modal = SAM 3.1 on Modal. vlm = experimental fallback using the vision model.")
         use_agent = st.checkbox("Verification agent", value=True)
         key_ok = bool(os.getenv("LLM_API_KEY"))
         st.write(("✅" if key_ok else "❌") + " LLM_API_KEY set")
@@ -77,7 +76,7 @@ with st.sidebar:
         st.caption(f"Model: {os.getenv('LLM_MODEL', 'meta-models/muse-spark-open-1026')}")
     else:
         st.warning("Simulated models: results here are NOT model accuracy.")
-        segmenter, use_agent = "modal", False
+        use_agent = False
 
     st.header("Rules")
     st.caption(f"{len(_rules())} active")
@@ -146,7 +145,7 @@ if run and image is not None:
         cfg = PipelineConfig(run_agent=use_agent)
         with st.spinner("Analyzing sheet..."):
             if live:
-                pipe = build_live_pipeline(segmenter, rules=_rules(), cfg=cfg)
+                pipe = build_live_pipeline(rules=_rules(), cfg=cfg)
             else:
                 pipe = build_simulated_pipeline(gt_sheet.graph, rules=_rules(), cfg=cfg)
             st.session_state.result = pipe.run(image)

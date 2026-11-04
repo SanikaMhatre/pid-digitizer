@@ -1,7 +1,7 @@
 """Evaluation CLI.
 
   python -m pid.eval.run_eval --mode simulated --n 14          # classical stages only, no model calls
-  python -m pid.eval.run_eval --mode live --n 6 --segmenter modal   # real models (spends credits)
+  python -m pid.eval.run_eval --mode live --n 6                # real model (spends credits)
   python -m pid.eval.run_eval --mode live --no-agent ...       # ablation: without the verification agent
 
 Sheets are synthetic, with planted errors cycling through every error kind plus clean sheets.
@@ -43,7 +43,6 @@ def mean(xs):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["simulated", "live"], default="simulated")
-    ap.add_argument("--segmenter", default=None, help="modal | vlm (live mode)")
     ap.add_argument("--n", type=int, default=14)
     ap.add_argument("--split", choices=["dev", "test"], default="dev")
     ap.add_argument("--rows", type=int, default=2)
@@ -55,7 +54,7 @@ def main(argv=None):
     rules = default_rules()
     cfg = PipelineConfig(run_agent=not args.no_agent)
     rows = []
-    live_pipe = build_live_pipeline(args.segmenter, rules=rules, cfg=cfg) if args.mode == "live" else None
+    live_pipe = build_live_pipeline(rules=rules, cfg=cfg) if args.mode == "live" else None
 
     for seed, errors in plan_sheets(args.n, args.split):
         sheet = make_sheet(seed=seed, n_rows=args.rows, errors=errors, scan_noise=args.scan_noise)

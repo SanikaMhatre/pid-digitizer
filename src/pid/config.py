@@ -1,13 +1,10 @@
 """Build pipelines from environment configuration.
 
-Live mode (real models):
-  LLM_API_KEY, LLM_BASE_URL, LLM_MODEL         -> Muse Spark Open endpoint
-  PID_SEGMENTER = modal | vlm                    -> SAM 3.1 on Modal, or the VLM-box fallback
-  PID_MODAL_APP / PID_MODAL_CLS                  -> default pid-sam / SamServer
+Live mode (real models) needs only the Muse Spark Open endpoint:
+  LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 """
 from __future__ import annotations
 
-import os
 from typing import Optional
 
 from .classify import SimulatedClassifier, VLMClassifier
@@ -16,27 +13,17 @@ from .pipeline import Pipeline, PipelineConfig
 from .rules.engine import Rule
 from .schema import Graph
 from .segment.base import OracleSegmenter
+from .segment.muse_localizer import MuseLocalizer
 
 
 def build_live_pipeline(
-    segmenter: Optional[str] = None,
     client: Optional[ChatClient] = None,
     rules: Optional[list[Rule]] = None,
     cfg: Optional[PipelineConfig] = None,
 ) -> Pipeline:
+    """Muse Spark Open does localization, classification, tag reading and verification."""
     client = client or ChatClient.from_env()
-    segmenter = (segmenter or os.getenv("PID_SEGMENTER", "modal")).lower()
-    if segmenter == "modal":
-        from .segment.sam_modal import ModalSamSegmenter
-
-        seg = ModalSamSegmenter(os.getenv("PID_MODAL_APP", "pid-sam"), os.getenv("PID_MODAL_CLS", "SamServer"))
-    elif segmenter == "vlm":
-        from .segment.vlm_boxes import VLMBoxSegmenter
-
-        seg = VLMBoxSegmenter(client)
-    else:
-        raise ValueError(f"unknown segmenter '{segmenter}' (expected modal or vlm)")
-    return Pipeline(seg, VLMClassifier(client), client=client, rules=rules, cfg=cfg)
+    return Pipeline(MuseLocalizer(client), VLMClassifier(client), client=client, rules=rules, cfg=cfg)
 
 
 def build_simulated_pipeline(gt: Graph, rules: Optional[list[Rule]] = None, cfg: Optional[PipelineConfig] = None) -> Pipeline:

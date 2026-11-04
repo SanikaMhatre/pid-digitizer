@@ -1,7 +1,7 @@
-"""Smoke tests for the two live model dependencies.  Run these FIRST once credits arrive.
+"""Smoke tests for the live Muse Spark Open endpoint.  Run these FIRST once credits arrive.
 
   python -m pid.smoke llm        # Muse Spark Open: basic call, vision, strict JSON, tool calling, reasoning param
-  python -m pid.smoke sam        # SAM 3.1 on Modal: does it find the symbols on a synthetic sheet?
+  python -m pid.smoke localize   # Muse Spark localizer: box recall vs ground truth on synthetic sheets, plus cost
   python -m pid.smoke all
 
 Each check prints PASS / FAIL with the reason, and the LLM checks print the tokens and dollars used,
@@ -80,18 +80,25 @@ def check_llm(client: ChatClient) -> list[dict]:
     return results
 
 
-def check_sam(segmenter=None, n_sheets: int = 2) -> list[dict]:
-    if segmenter is None:
-        from .segment.sam_modal import ModalSamSegmenter
+def check_localizer(localizer=None, n_sheets: int = 2) -> list[dict]:
+    """Box recall (IoU >= 0.5) of the localizer against generated ground truth, and its cost."""
+    client = None
+    if localizer is None:
+        from .segment.muse_localizer import MuseLocalizer
 
-        segmenter = ModalSamSegmenter()
+        client = ChatClient.from_env(cache_dir=False)
+        localizer = MuseLocalizer(client)
     out = []
     for seed in range(n_sheets):
         sheet = make_sheet(seed=seed)
-        dets = segmenter.detect(sheet.image)
+        mark = client.ledger.snapshot() if client else 0
+        dets = localizer.detect(sheet.image)
         hit = sum(1 for n in sheet.graph.nodes if any(iou(n.bbox, d.bbox) >= 0.5 for d in dets))
-        out.append({"seed": seed, "gt_symbols": len(sheet.graph.nodes), "detections": len(dets),
-                    "recall_at_iou_0.5": round(hit / len(sheet.graph.nodes), 3)})
+        row = {"seed": seed, "gt_symbols": len(sheet.graph.nodes), "detections": len(dets),
+               "recall_at_iou_0.5": round(hit / len(sheet.graph.nodes), 3)}
+        if client:
+            row["cost_usd"] = client.ledger.since(mark)["cost_usd"]
+        out.append(row)
     return out
 
 
@@ -106,7 +113,7 @@ def _print_llm(results, client):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("target", choices=["llm", "sam", "all"])
+    ap.add_argument("target", choices=["llm", "localize", "all"])
     args = ap.parse_args(argv)
     ok = True
     if args.target in ("llm", "all"):
@@ -117,16 +124,16 @@ def main(argv=None):
         except LLMError as e:
             print("FAIL", e)
             ok = False
-    if args.target in ("sam", "all"):
+    if args.target in ("localize", "all"):
         try:
-            rows = check_sam()
+            rows = check_localizer()
             for r in rows:
                 print(r)
             good = all(r["recall_at_iou_0.5"] >= 0.5 for r in rows)
-            print(f"[{'PASS' if good else 'WEAK'}] SAM localization recall >= 0.5 on synthetic sheets")
+            print(f"[{'PASS' if good else 'WEAK'}] Muse localization recall >= 0.5 on synthetic sheets")
             ok &= good
         except Exception as e:
-            print(f"[FAIL] SAM: {type(e).__name__}: {str(e)[:300]}")
+            print(f"[FAIL] localizer: {type(e).__name__}: {str(e)[:300]}")
             ok = False
     sys.exit(0 if ok else 1)
 

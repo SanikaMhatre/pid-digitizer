@@ -85,7 +85,7 @@ class Pipeline:
                 bbox=[float(v) for v in d.bbox],
                 confidence=r.class_conf,
                 tag_confidence=r.tag_conf,
-                source="sam+vlm",
+                source="muse",
                 notes=r.evidence or None,
             )
             for i, (d, r) in enumerate(keep)
@@ -129,7 +129,7 @@ def _sanity_warnings(n_candidates: int, n_symbols: int, graph: Graph) -> list[st
     """Cheap checks that catch a result that is syntactically fine but probably wrong."""
     out = []
     if n_candidates == 0:
-        out.append("The segmenter found no candidate symbols; the sheet may be blank, too large, or the segmenter misconfigured.")
+        out.append("The localizer found no candidate symbols; the sheet may be blank or too large, or the model endpoint misbehaving.")
     elif n_symbols == 0:
         out.append(f"All {n_candidates} candidates were rejected as 'not a symbol'; check the model endpoint and the legend.")
     elif n_symbols < 0.4 * n_candidates:

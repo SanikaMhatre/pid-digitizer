@@ -151,13 +151,13 @@ def test_smoke_check_llm_reports_pass_and_fail(make_client):
     assert res["tool calling"] is False  # this fake endpoint never returns tool calls -> reported as FAIL, not an exception
 
 
-def test_smoke_check_sam_with_injected_segmenter():
+def test_smoke_check_localizer_with_injected_localizer():
     from pid.segment.base import OracleSegmenter
-    from pid.smoke import check_sam
+    from pid.smoke import check_localizer
 
-    class PerfectSeg:
+    class Perfect:
         def detect(self, image):
             return OracleSegmenter(make_sheet(seed=0).graph).detect(image)
 
-    rows = check_sam(PerfectSeg(), n_sheets=1)
+    rows = check_localizer(Perfect(), n_sheets=1)
     assert rows[0]["recall_at_iou_0.5"] == 1.0
