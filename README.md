@@ -103,23 +103,41 @@ with the model stages replaced by ground truth. They need no key, and their scor
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    A["Sheet image<br/>PNG or JPEG"] --> B["Localize<br/>SAM 3.1, tiled"]
+    B --> C["Classify<br/>Muse model, strict JSON"]
+    C --> D["Trace nets<br/>classical CV"]
+    D --> E["Graph<br/>nodes + nets"]
+    E --> F["Verify<br/>agent with 4 tools"]
+    F --> G["Rules<br/>YAML engine"]
+    G --> H["Outputs<br/>graph JSON, BOM, overlay,<br/>violations, cost log"]
+    classDef model fill:#e3effc,stroke:#2b78d6,stroke-width:2px
+    class B,C,F model
 ```
-sheet image
-  │
-  ├─ localize ── SAM 3.1 (Meta Model API): tiled, one text prompt per symbol class, boxes NMS-merged
-  │
-  ├─ classify ── Muse model vision + strict JSON schema: class, tag, confidences (parallel, cached)
-  │
-  ├─ trace ───── classical CV: mask symbols → bridge dashes → connected components → nets with W/E/N/S attachments
-  │
-  ├─ graph ───── nodes (symbols) + nets (pipes / signal lines)
-  │
-  ├─ verify ──── agent with tools: zoom · reclassify (higher reasoning) · commit_change · flag_for_human
-  │              fixed tool-call budget, schema-validated arguments, full audit log, unresolved items → human queue
-  │
-  ├─ rules ───── deterministic YAML rule engine (direction-aware path queries over the graph)
-  │
-  └─ outputs ─── graph JSON · BOM CSV · annotated overlay · violations · warnings · cost ledger
+
+Blue stages call a Meta model; the others are ordinary code. Only the rule engine decides violations.
+
+**Example graph.** A net records which side of each symbol it touches, so flow direction and junctions are kept.
+
+```mermaid
+flowchart LR
+    T["Tank T-101"] -- "n1: E to W" --> P["Pump P-101A"]
+    P -- "n2: E to W" --> V["Control valve FV-101"]
+    V -- "n3: E to W" --> R["Vessel V-101"]
+    I["Instrument FIC-101"] -. "n4 signal: S to N" .-> V
+```
+
+**Verification agent.** It can call only four whitelisted tools, every call is logged, and unresolved items go to a person.
+
+```mermaid
+flowchart LR
+    U["Flag uncertain<br/>class or tag conf under 0.75,<br/>or no tag read"] --> T["Agent turn<br/>Muse model, 14-call budget"]
+    T -- tool call --> X["zoom, reclassify,<br/>commit_change, flag_for_human"]
+    X -- result --> T
+    T -- stops or budget used --> Q["Review queue<br/>unresolved items, with reason"]
+    classDef model fill:#e3effc,stroke:#2b78d6,stroke-width:2px
+    class T model
 ```
 
 **Why nets, not edges.** A tee feeding two valves is one net with three attachments, not a clique of edges. Flow direction comes from the
@@ -179,6 +197,8 @@ Symbol F1 is class-aware at IoU 0.5; violation F1 compares the violations raised
 | SAM localizer + agent (default) | 0.76 | 1.00 | 0.46 | 0.23 | 4/5 | 27.8 | 0.056 |
 | SAM + Muse localizers merged (`both`) + agent | 0.70 | 1.00 | 0.50 | 0.09 | 5/5 | 86.6 | 0.070 |
 
+![F1 by localizer setup](docs/img/localizer_f1.png)
+
 Reading: tag reading is reliable. Symbols the localizer misses break pipe connections, which lowers connectivity and, downstream, violation
 agreement. Merging the two localizers finds more symbols but adds false ones, so the cleaner SAM-only setup scores better on symbol and
 violation F1 and is about 3x faster. Six sheets is a small sample; these are indicative, not a benchmark.
@@ -225,5 +245,9 @@ tests/                 automated tests (no API key needed)
 docs/                  RUNBOOK.md · DEMO_SCRIPT.md
 ```
 
+## Development note
+
+This project was developed with AI coding assistance (Claude). Record your own contribution and decisions in the commit history and the
+hackathon submission as the rules require.
 
 *Built with Muse Spark Open.*
