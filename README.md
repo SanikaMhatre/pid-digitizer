@@ -22,56 +22,81 @@ is locked in pixels, which blocks plant modifications, safety reviews and digita
 
 ## Setup
 
-**1. Requirements:** Python 3.10 or newer, and a Meta Model API account (dev.meta.ai) for the live models.
+Run every command in a terminal opened **inside the project folder**. The tests and the offline mode need no API key; the smoke
+tests, the live evaluation and the live UI call Meta's models and do.
+
+**1. Requirements:** Python 3.10 or newer (conda or venv), and a Meta Model API account at [dev.meta.ai](https://dev.meta.ai) with credits.
 
 **2. Create an environment and install**
 ```bash
 conda create -n pid python=3.12 -y     # or: python -m venv .venv  and activate it
 conda activate pid
-cd pid-digitizer                       # the project folder
 pip install -e ".[dev]"                # installs the project and its dependencies from pyproject.toml, plus pytest
-pytest -q                              # 89 passed means the install works (no API key needed for this)
+pytest -q                              # every test should pass (no API key needed for this)
 ```
 
 **3. Get an API key**
-1. Sign in at [dev.meta.ai](https://dev.meta.ai) and open **API keys** in the left menu.
-2. Click **Create API key**, name it, and copy the key right away (it is shown once).
-3. Check **Billing** or **Usage** to confirm your credits are on the account.
+1. Sign in at [dev.meta.ai](https://dev.meta.ai) and click **API keys** in the left menu.
+2. Click **Create API key**, name it (for example `pid-digitizer`) and copy it right away. It is shown only once.
+3. Open **Billing** or **Usage** to confirm your credits are on the account.
 
-**4. Configure**
+**4. Create `.env`**
 ```bash
-cp .env.example .env                   # Windows: copy .env.example .env
+copy .env.example .env                 # Windows
+cp .env.example .env                   # Mac / Linux
 ```
-Open `.env` and set:
+Open `.env` in a text editor and fill in these three lines (only the key changes):
 ```
-LLM_API_KEY=<your key>
+LLM_API_KEY=paste-your-key-here
 LLM_BASE_URL=https://api.meta.ai/v1
 LLM_MODEL=muse-spark-1.3
 ```
-`.env` is read automatically from the folder you run commands in, and is git-ignored. Do not commit or share the key.
-Use the Standard model, not `muse-spark-1.3-contributor`: Contributor mode lets Meta train on your inputs.
-SAM 3.1 uses the same key and base URL by default.
+- The program reads `.env` automatically from the folder you run commands in. You do not need to export variables.
+- The file must be named exactly `.env` (not `.env.txt`; Windows can hide extensions). Check with `dir .env*`.
+- Use the Standard model, not `muse-spark-1.3-contributor`: Contributor mode lets Meta train on your inputs.
+- SAM 3.1 reuses the same key and base URL by default (`SAM_API_KEY` / `SAM_BASE_URL` override them).
+- `.env` is git-ignored. Never commit or share the key.
 
 **5. Check the connection**
 ```bash
-python -m pid.smoke llm                # Muse model: basic call, vision, strict JSON, tool calling, with cost
-python -m pid.smoke localize           # SAM 3.1: box recall on generated sheets, with cost
+python -m pid.smoke llm                       # Muse model: basic call, vision, strict JSON, tool calling, with cost
+python -m pid.smoke localize                  # SAM 3.1: box recall on generated sheets, with cost
+python -m pid.smoke localize --localizer muse # the alternative: the Muse model finds the boxes itself
+python -m pid.smoke localize --localizer both # union of SAM and Muse boxes
 ```
+Each check prints PASS or FAIL with the reason. A 401 means a wrong key or base URL; a 404 means a wrong model id.
+`localize` prints recall (ground-truth symbols found) and precision (detections that are real symbols). If SAM finds few symbols,
+`python -m pid.smoke sam-debug` tries a list of prompt phrases and shows which ones match the ground truth; set the best ones with
+`SAM_PROMPTS=symbol,rectangle,circle` in `.env`.
 
-**6. Run it**
+**6. Run the web UI**
+
+Open a terminal (a new one is fine while another command is running) and run:
 ```bash
-streamlit run src/pid/app/ui.py        # web UI: choose "Live models" in the sidebar, upload a drawing
-uvicorn pid.app.api:app                # or the HTTP API (docs at /docs)
-python demo/make_demo_assets.py        # sample drawings: clean_sheet.png, planted_errors.png, noisy_scan.png
+cd <your project folder>
+conda activate pid
+python demo/make_demo_assets.py               # once: creates clean_sheet.png, planted_errors.png, noisy_scan.png, legend.png in demo/
+streamlit run src/pid/app/ui.py               # starts the UI; it opens in your browser, usually at http://localhost:8501
 ```
+In the UI:
+1. In the sidebar, set **Mode** to **Live models**.
+2. Choose a **Localizer**: `sam` (default), `muse`, or `both` (highest recall, a few more false boxes).
+3. Upload `demo/planted_errors.png` (a full sheet with design errors planted on purpose) and click **Run analysis**.
+4. Read the result in the tabs: Overlay, Violations, Graph / BOM, Agent log, Review queue, Performance.
+
+`demo/legend.png` is only the symbol key (no pipes), so it shows symbols but zero nets. Use it to check classification, not whole-sheet results.
+To stop the UI, press `Ctrl+C` in its terminal.
+
+HTTP API instead of the UI: `uvicorn pid.app.api:app` (interactive docs at `http://localhost:8000/docs`).
 
 **7. Measure**
 ```bash
-python -m pid.eval.run_eval --mode live --n 6              # SAM + Muse + agent
-python -m pid.eval.run_eval --mode live --n 6 --no-agent   # ablation: without verification
-python -m pid.eval.run_eval --mode live --n 6 --localizer muse   # ablation: Muse model finds the boxes
-python -m pid.eval.run_eval --mode live --split test       # held-out sheets (seeds >= 1000; do not tune on them)
+python -m pid.eval.run_eval --mode live --n 6                      # SAM + Muse + agent
+python -m pid.eval.run_eval --mode live --n 6 --no-agent           # ablation: without verification
+python -m pid.eval.run_eval --mode live --n 6 --localizer muse     # ablation: Muse model finds the boxes (or: both)
+python -m pid.eval.run_eval --mode live --split test               # held-out sheets (seeds >= 1000; do not tune on them)
 ```
+Results are written to `eval/results/` and summarized in the table under *Evaluation protocol*.
 
 **Without any key:** `python -m pid.eval.run_eval --mode simulated` and the UI's "Offline simulated" mode run the tracing and rules
 with the model stages replaced by ground truth. They need no key, and their scores are not model accuracy.
@@ -146,12 +171,17 @@ applied only after you approve them.
 
 ### Results
 
-| Run | Symbol F1 | Tag acc. | Connectivity F1 | Planted found | s/sheet | $/sheet |
-|---|---|---|---|---|---|---|
-| live, SAM + Muse + agent | | | | | | |
-| live, no agent | | | | | | |
-| live, Muse localizer + agent | | | | | | |
-| live, with scan noise | | | | | | |
+Generated sheets, development seeds 0-5 (6 sheets, one planted error each except one clean sheet), Muse Spark 1.3 + SAM 3.1 via the Meta Model API.
+Symbol F1 is class-aware at IoU 0.5; violation F1 compares the violations raised on the predicted graph with those the engine raises on the ground-truth graph.
+
+| Run | Symbol F1 | Tag acc. | Connectivity F1 | Violation F1 | Planted found | s/sheet | $/sheet |
+|---|---|---|---|---|---|---|---|
+| SAM localizer + agent (default) | 0.76 | 1.00 | 0.46 | 0.23 | 4/5 | 27.8 | 0.056 |
+| SAM + Muse localizers merged (`both`) + agent | 0.70 | 1.00 | 0.50 | 0.09 | 5/5 | 86.6 | 0.070 |
+
+Reading: tag reading is reliable. Symbols the localizer misses break pipe connections, which lowers connectivity and, downstream, violation
+agreement. Merging the two localizers finds more symbols but adds false ones, so the cleaner SAM-only setup scores better on symbol and
+violation F1 and is about 3x faster. Six sheets is a small sample; these are indicative, not a benchmark.
 
 ## Security and privacy
 
@@ -191,13 +221,9 @@ src/pid/
   eval/                metrics.py · run_eval.py
   app/                 api.py (FastAPI) · ui.py (Streamlit)
   smoke.py             live smoke tests
-tests/                 89 tests
+tests/                 automated tests (no API key needed)
 docs/                  RUNBOOK.md · DEMO_SCRIPT.md
 ```
 
-## Development note
-
-This project was developed with AI coding assistance (Claude). Record your own contribution and decisions in the commit history and the
-hackathon submission as the rules require.
 
 *Built with Muse Spark Open.*

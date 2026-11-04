@@ -4,7 +4,7 @@ Deadline: **Wed 4 Nov, 9:00 PM ET** (Thu 5 Nov, about 7:30 AM IST). Late submiss
 Aim to submit well before the deadline; keep the last hours for the video and the submission form.
 
 ## Phase A: first hour
-1. `pip install -e ".[dev]"` then `pytest -q` (expect 89 passed). Create the public GitHub repo, push, and keep commits meaningful.
+1. `pip install -e ".[dev]"` then `pytest -q` (expect 90 passed). Create the public GitHub repo, push, and keep commits meaningful.
 2. Confirm credits arrived (Meta billing page; Baseten/Fireworks emails). Add a spend-limit alert on every provider.
 3. `cp .env.example .env`, set `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (Baseten: `meta-models/muse-spark-open-1026`), and set your provider's real prices in `LLM_PRICE_IN/OUT`.
 4. **Gate A**: `python -m pid.smoke llm`. Every check should PASS.

@@ -33,8 +33,8 @@ def check_llm(client: ChatClient) -> list[dict]:
     target = next(n for n in sheet.graph.nodes if n.cls == "pump")
 
     def basic():
-        r = client.chat([{"role": "user", "content": "Reply with exactly: pong"}], purpose="smoke", max_tokens=20, use_cache=False)
-        assert "pong" in r.text.lower(), f"unexpected reply {r.text!r}"
+        r = client.chat([{"role": "user", "content": "Reply with exactly: pong"}], purpose="smoke", max_tokens=300, reasoning_effort="low", use_cache=False)
+        assert "pong" in r.text.lower(), f"unexpected reply {r.text!r} (finish_reason={r.finish_reason!r})"
         return r.text.strip()
 
     def reasoning():
@@ -55,7 +55,7 @@ def check_llm(client: ChatClient) -> list[dict]:
             response_format={"type": "json_schema", "json_schema": {"name": "x", "strict": True, "schema": {
                 "type": "object", "properties": {"colour": {"type": "string"}, "n": {"type": "integer"}},
                 "required": ["colour", "n"], "additionalProperties": False}}},
-            max_tokens=100, use_cache=False)
+            max_tokens=300, reasoning_effort="low", use_cache=False)
         d = r.json()
         assert set(d) == {"colour", "n"}, f"schema not honoured: {d}"
         return d
@@ -64,8 +64,8 @@ def check_llm(client: ChatClient) -> list[dict]:
         tool = [{"type": "function", "function": {"name": "zoom", "description": "magnify a symbol",
                  "parameters": {"type": "object", "properties": {"node_id": {"type": "string"}}, "required": ["node_id"]}}}]
         r = client.chat([{"role": "user", "content": "Zoom into node n7."}], purpose="smoke", tools=tool,
-                        tool_choice="auto", max_tokens=100, use_cache=False)
-        assert r.tool_calls and r.tool_calls[0]["name"] == "zoom", f"no tool call returned: {r.text!r}"
+                        tool_choice="auto", max_tokens=400, reasoning_effort="low", use_cache=False)
+        assert r.tool_calls and r.tool_calls[0]["name"] == "zoom", f"no tool call returned: {r.text!r} (finish_reason={r.finish_reason!r})"
         return r.tool_calls[0]["arguments"]
 
     def image_in_tool_followup():
@@ -94,12 +94,50 @@ def check_localizer(localizer=None, n_sheets: int = 2, kind: str | None = None) 
         mark = client.ledger.snapshot() if client else 0
         dets = localizer.detect(sheet.image)
         hit = sum(1 for n in sheet.graph.nodes if any(iou(n.bbox, d.bbox) >= 0.5 for d in dets))
+        good = sum(1 for d in dets if any(iou(n.bbox, d.bbox) >= 0.5 for n in sheet.graph.nodes))
         row = {"seed": seed, "gt_symbols": len(sheet.graph.nodes), "detections": len(dets),
-               "recall_at_iou_0.5": round(hit / len(sheet.graph.nodes), 3)}
+               "recall_at_iou_0.5": round(hit / len(sheet.graph.nodes), 3),
+               "precision_at_iou_0.5": round(good / len(dets), 3) if dets else 0.0}
         if client:
             row["cost_usd"] = client.ledger.since(mark)["cost_usd"]
         out.append(row)
     return out
+
+
+SWEEP_PHRASES = ["pump", "valve", "check valve", "control valve", "tank", "vessel", "relief valve", "instrument", "circle", "triangle",
+                 "rectangle", "bowtie", "symbol", "equipment", "valve symbol", "pump symbol", "circle with a letter", "square", "diamond"]
+
+
+def debug_sam(n_sheets: int = 1) -> None:
+    """Prompt sweep: which SAM phrases actually find the ground-truth symbols?  Prints raw text when a phrase returns nothing."""
+    from .config import build_localizer
+    from .segment.base import tile_boxes
+
+    client = ChatClient.from_env(cache_dir=False)
+    loc = build_localizer(client, "sam")
+    loc.min_score = 0.0
+    for seed in range(n_sheets):
+        sheet = make_sheet(seed=seed)
+        W, H = sheet.image.size
+        tiles = tile_boxes(W, H, loc.tile, loc.overlap)
+        print(f"sheet seed {seed}: {W}x{H}px, {len(tiles)} tile(s), {len(sheet.graph.nodes)} ground-truth symbols")
+        shown = False
+        for phrase in SWEEP_PHRASES:
+            dets, sample = [], ""
+            for x0, y0, x1, y1 in tiles:
+                crop = sheet.image.crop((x0, y0, x1, y1))
+                txt = loc.request_text(crop, phrase)
+                sample = sample or txt[:160]
+                dets += loc._one(crop, phrase, phrase, x0, y0)
+            hits: dict[str, int] = {}
+            for n in sheet.graph.nodes:
+                if any(iou(n.bbox, d.bbox) >= 0.5 for d in dets):
+                    hits[n.cls] = hits.get(n.cls, 0) + 1
+            print(f"  {phrase!r:26} boxes={len(dets):3d}  matched ground truth: {hits or '-'}")
+            if not dets and not shown:
+                print(f"     raw reply for this phrase: {sample!r}")
+                shown = True
+    print("usage:", json.dumps(client.ledger.totals()))
 
 
 def _print_llm(results, client):
@@ -113,8 +151,8 @@ def _print_llm(results, client):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("target", choices=["llm", "localize", "all"])
-    ap.add_argument("--localizer", choices=["sam", "muse"], default=None)
+    ap.add_argument("target", choices=["llm", "localize", "sam-debug", "all"])
+    ap.add_argument("--localizer", choices=["sam", "muse", "both"], default=None)
     args = ap.parse_args(argv)
     ok = True
     if args.target in ("llm", "all"):
@@ -125,6 +163,9 @@ def main(argv=None):
         except LLMError as e:
             print("FAIL", e)
             ok = False
+    if args.target == "sam-debug":
+        debug_sam()
+        sys.exit(0)
     if args.target in ("localize", "all"):
         try:
             rows = check_localizer(kind=args.localizer)

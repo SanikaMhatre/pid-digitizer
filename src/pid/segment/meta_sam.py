@@ -20,16 +20,14 @@ from PIL import Image
 from ..models.llm import ChatClient, image_data_url
 from .base import Detection, filter_boxes, nms, tile_boxes
 
-DEFAULT_PROMPTS: dict[str, str] = {
-    "tank": "storage tank",
-    "vessel": "pressure vessel",
-    "pump": "pump",
-    "valve": "valve",
-    "check_valve": "check valve",
-    "control_valve": "control valve",
-    "instrument": "instrument bubble",
-    "relief_valve": "relief valve",
-}
+# SAM matches visual concepts, not engineering vocabulary.  A prompt sweep on generated sheets (`python -m pid.smoke sam-debug`) showed
+# "pump", "valve", "tank" and similar returned nothing, while generic shapes worked: "symbol" matched 10 of 16 ground-truth symbols,
+# "rectangle" the tanks, "circle" a pump and an instrument.  So SAM only finds boxes here; the Muse model names each one afterwards.
+# SAM answers best to generic shape / "symbol" phrases on line drawings.  Measured on generated dev sheets with
+# `python -m pid.smoke sam-debug`: domain words ("pump", "valve", "tank") returned nothing at all, while "symbol" matched 9 of 16
+# ground-truth symbols, "rectangle" the tanks, and "circle" pumps and instruments.  The class is NOT taken from the phrase:
+# the Muse classifier reads each box.  Override with SAM_PROMPTS="symbol,rectangle,circle,triangle".
+DEFAULT_PROMPTS: dict[str, str] = {"symbol": "symbol", "rectangle": "rectangle", "circle": "circle"}
 
 SAM_PRICE_PER_IMAGE_USD = 2.50 / 1000  # listed price: $2.50 per 1,000 images
 
@@ -79,8 +77,7 @@ class MetaSamLocalizer:
         self.client, self.prompts, self.tile, self.overlap = client, prompts or DEFAULT_PROMPTS, tile, overlap
         self.min_score, self.workers, self.model = min_score, workers, model
 
-    def _one(self, crop: Image.Image, cls: str, phrase: str, ox: int, oy: int) -> list[Detection]:
-        w, h = crop.size
+    def request_text(self, crop: Image.Image, phrase: str) -> str:
         payload = {
             "model": self.model,
             "input": [
@@ -96,8 +93,12 @@ class MetaSamLocalizer:
             "metadata": {"include_confidence": "true", "mask_encoding": "one_bit"},
         }
         data = self.client.post_raw("responses", payload, purpose="localize", fixed_cost=SAM_PRICE_PER_IMAGE_USD)
+        return response_text(data)
+
+    def _one(self, crop: Image.Image, cls: str, phrase: str, ox: int, oy: int) -> list[Detection]:
+        w, h = crop.size
         dets = []
-        for b in parse_boxes(response_text(data)):
+        for b in parse_boxes(self.request_text(crop, phrase)):
             sx = w / b["w"] if b.get("w") else 1.0
             sy = h / b["h"] if b.get("h") else 1.0
             x0, y0 = b["x1"] * sx, b["y1"] * sy

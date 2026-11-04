@@ -70,11 +70,9 @@ with st.sidebar:
     live = mode == "Live models"
     if live:
         use_agent = st.checkbox("Verification agent", value=True)
-        localizer = st.selectbox("Localizer", ["sam", "muse"], help="sam = SAM 3.1 on the Meta Model API. muse = the Muse model finds the boxes itself.")
+        localizer = st.selectbox("Localizer", ["sam", "muse", "both"], help="sam = SAM 3.1 on the Meta Model API. muse = the Muse model finds the boxes itself. both = union of the two.")
         key_ok = bool(os.getenv("LLM_API_KEY"))
-        st.write(("✅" if key_ok else "❌") + " LLM_API_KEY set")
-        st.caption(f"Endpoint: {os.getenv('LLM_BASE_URL', 'https://inference.baseten.co/v1')}")
-        st.caption(f"Model: {os.getenv('LLM_MODEL', 'meta-models/muse-spark-open-1026')}")
+       
     else:
         st.warning("Simulated models: results here are NOT model accuracy.")
         use_agent, localizer = False, None

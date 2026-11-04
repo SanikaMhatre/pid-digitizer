@@ -77,3 +77,36 @@ def test_build_localizer_choices(monkeypatch):
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+
+def test_combined_localizer_unions_and_merges():
+    from pid.segment.base import Detection
+    from pid.segment.combined import CombinedLocalizer
+
+    class A:
+        def detect(self, image):
+            return [Detection([10, 10, 60, 60], 0.9), Detection([200, 10, 250, 60], 0.9)]
+
+    class B:
+        def detect(self, image):
+            return [Detection([12, 11, 61, 62], 0.6), Detection([400, 10, 450, 60], 0.6)]  # first one duplicates A's
+
+    dets = CombinedLocalizer(A(), B()).detect(Image.new("RGB", (600, 300), "white"))
+    assert len(dets) == 3
+
+
+def test_build_localizer_both(monkeypatch):
+    from pid.models.llm import ChatClient
+    from pid.segment.combined import CombinedLocalizer
+
+    assert isinstance(build_localizer(ChatClient(api_key="k", cache_dir=False), "both"), CombinedLocalizer)
+
+
+def test_default_prompts_and_env_override(monkeypatch):
+    from pid.models.llm import ChatClient
+
+    c = ChatClient(api_key="k", cache_dir=False)
+    monkeypatch.delenv("SAM_PROMPTS", raising=False)
+    assert list(build_localizer(c, "sam").prompts) == ["symbol", "rectangle", "circle"]
+    monkeypatch.setenv("SAM_PROMPTS", "symbol, triangle")
+    assert list(build_localizer(c, "sam").prompts) == ["symbol", "triangle"]

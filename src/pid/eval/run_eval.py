@@ -49,7 +49,7 @@ def main(argv=None):
     ap.add_argument("--rows", type=int, default=2)
     ap.add_argument("--scan-noise", action="store_true")
     ap.add_argument("--no-agent", action="store_true")
-    ap.add_argument("--localizer", choices=["sam", "muse"], default=None, help="default: PID_LOCALIZER env or sam")
+    ap.add_argument("--localizer", choices=["sam", "muse", "both"], default=None, help="default: PID_LOCALIZER env or sam")
     ap.add_argument("--out", default="eval/results")
     args = ap.parse_args(argv)
 

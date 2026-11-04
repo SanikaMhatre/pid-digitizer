@@ -161,3 +161,25 @@ def test_smoke_check_localizer_with_injected_localizer():
 
     rows = check_localizer(Perfect(), n_sheets=1)
     assert rows[0]["recall_at_iou_0.5"] == 1.0
+
+
+def test_empty_length_reply_is_retried_with_bigger_budget(make_client):
+    import json
+
+    import httpx
+    from conftest import openai_body
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body["max_tokens"])
+        if len(seen) == 1:
+            data = openai_body(content="")
+            data["choices"][0]["finish_reason"] = "length"
+            return httpx.Response(200, json=data)
+        return httpx.Response(200, json=openai_body(content="pong"))
+
+    client = make_client(handler, cache=False)
+    res = client.chat([{"role": "user", "content": "x"}], max_tokens=20)
+    assert res.text == "pong" and seen == [20, 80]

@@ -101,6 +101,7 @@ class ChatResult:
     message: dict
     cached: bool = False
     raw: dict = field(default_factory=dict)
+    finish_reason: str = ""
 
     def json(self) -> Any:
         return extract_json(self.text)
@@ -181,7 +182,16 @@ class ChatClient:
         return cls(**kw)
 
     # ------------------------------------------------------------------ core call
-    def chat(
+    def chat(self, messages: list[dict], **kw) -> ChatResult:
+        """One chat call.  Reasoning models spend max_tokens on thinking first, so a small budget can come back empty with
+        finish_reason "length": retry once with a larger budget instead of returning an empty answer."""
+        res = self._chat_once(messages, **kw)
+        if not res.text.strip() and not res.tool_calls and res.finish_reason == "length":
+            kw["max_tokens"] = min(int(kw.get("max_tokens", 1024)) * 4, 8000)
+            res = self._chat_once(messages, **kw)
+        return res
+
+    def _chat_once(
         self,
         messages: list[dict],
         *,
@@ -287,7 +297,8 @@ class ChatClient:
             except json.JSONDecodeError:
                 args = {"_unparsed": raw_args}
             calls.append({"id": tc.get("id", ""), "name": fn.get("name", ""), "arguments": args})
-        return ChatResult(text=content or "", tool_calls=calls, message=msg, cached=cached, raw=data)
+        finish = str(data["choices"][0].get("finish_reason") or "")
+        return ChatResult(text=content or "", tool_calls=calls, message=msg, cached=cached, raw=data, finish_reason=finish)
 
     def close(self):
         self._http.close()
