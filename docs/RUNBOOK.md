@@ -3,8 +3,8 @@
 Deadline: **Wed 4 Nov, 9:00 PM ET** (Thu 5 Nov, about 7:30 AM IST). Late submissions are not considered.
 Aim to submit well before the deadline; keep the last hours for the video and the submission form.
 
-## Phase A: first hour (nothing here needs a GPU)
-1. `pip install -e ".[dev]"` then `pytest -q` (expect 82 passed). Create the public GitHub repo, push, and keep commits meaningful.
+## Phase A: first hour
+1. `pip install -e ".[dev]"` then `pytest -q` (expect 87 passed). Create the public GitHub repo, push, and keep commits meaningful.
 2. Confirm credits arrived (Meta billing page; Baseten/Fireworks emails). Add a spend-limit alert on every provider.
 3. `cp .env.example .env`, set `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (Baseten: `meta-models/muse-spark-open-1026`), and set your provider's real prices in `LLM_PRICE_IN/OUT`.
 4. **Gate A**: `python -m pid.smoke llm`. Every check should PASS.
@@ -13,11 +13,11 @@ Aim to submit well before the deadline; keep the last hours for the video and th
    - vision FAIL → check the model id; the text-only model will not accept images.
 
 ## Phase B: localizer gate
-5. **Gate B**: `python -m pid.smoke localize`. It prints box recall (IoU ≥ 0.5) per generated sheet, and cost.
-   Recall ≥ 0.8 → proceed. 0.5–0.8 → ask before adding box refinement (snapping boxes to ink). < 0.5 → ask before changing the approach.
+5. **Gate B**: `python -m pid.smoke localize` (SAM 3.1), then `python -m pid.smoke localize --localizer muse`. Each prints box recall (IoU ≥ 0.5) and cost.
+   Use the better one (set `PID_LOCALIZER`). SAM low → edit `DEFAULT_PROMPTS` in `segment/meta_sam.py` (concept phrases matter) or lower `min_score`.
 
 ## Phase C: measure (this is what the Technical Depth score rewards)
-6. `python -m pid.eval.run_eval --mode live --n 6 --split dev` then the ablations (`--no-agent`, `--scan-noise`).
+6. `python -m pid.eval.run_eval --mode live --n 6 --split dev` then the ablations (`--no-agent`, `--localizer muse`, `--scan-noise`).
 7. Tune thresholds on **dev** only (`PipelineConfig.agent.low_conf`, `TraceCfg`). Then run once on `--split test` and report that.
 8. Fill the results table in the README with the real numbers, including the bad ones. Cost per sheet comes from the ledger.
 

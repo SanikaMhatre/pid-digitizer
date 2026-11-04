@@ -1,7 +1,7 @@
 """Smoke tests for the live Muse Spark Open endpoint.  Run these FIRST once credits arrive.
 
   python -m pid.smoke llm        # Muse Spark Open: basic call, vision, strict JSON, tool calling, reasoning param
-  python -m pid.smoke localize   # Muse Spark localizer: box recall vs ground truth on synthetic sheets, plus cost
+  python -m pid.smoke localize   # localizer (SAM 3.1 by default; --localizer muse): box recall vs ground truth, plus cost
   python -m pid.smoke all
 
 Each check prints PASS / FAIL with the reason, and the LLM checks print the tokens and dollars used,
@@ -80,14 +80,14 @@ def check_llm(client: ChatClient) -> list[dict]:
     return results
 
 
-def check_localizer(localizer=None, n_sheets: int = 2) -> list[dict]:
+def check_localizer(localizer=None, n_sheets: int = 2, kind: str | None = None) -> list[dict]:
     """Box recall (IoU >= 0.5) of the localizer against generated ground truth, and its cost."""
     client = None
     if localizer is None:
-        from .segment.muse_localizer import MuseLocalizer
+        from .config import build_localizer
 
         client = ChatClient.from_env(cache_dir=False)
-        localizer = MuseLocalizer(client)
+        localizer = build_localizer(client, kind)
     out = []
     for seed in range(n_sheets):
         sheet = make_sheet(seed=seed)
@@ -114,6 +114,7 @@ def _print_llm(results, client):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("target", choices=["llm", "localize", "all"])
+    ap.add_argument("--localizer", choices=["sam", "muse"], default=None)
     args = ap.parse_args(argv)
     ok = True
     if args.target in ("llm", "all"):
@@ -126,11 +127,11 @@ def main(argv=None):
             ok = False
     if args.target in ("localize", "all"):
         try:
-            rows = check_localizer()
+            rows = check_localizer(kind=args.localizer)
             for r in rows:
                 print(r)
             good = all(r["recall_at_iou_0.5"] >= 0.5 for r in rows)
-            print(f"[{'PASS' if good else 'WEAK'}] Muse localization recall >= 0.5 on synthetic sheets")
+            print(f"[{'PASS' if good else 'WEAK'}] Localization recall >= 0.5 on synthetic sheets")
             ok &= good
         except Exception as e:
             print(f"[FAIL] localizer: {type(e).__name__}: {str(e)[:300]}")

@@ -1,7 +1,8 @@
 """Evaluation CLI.
 
   python -m pid.eval.run_eval --mode simulated --n 14          # classical stages only, no model calls
-  python -m pid.eval.run_eval --mode live --n 6                # real model (spends credits)
+  python -m pid.eval.run_eval --mode live --n 6                # real models (spends credits)
+  python -m pid.eval.run_eval --mode live --localizer muse     # ablation: Muse model finds the boxes instead of SAM
   python -m pid.eval.run_eval --mode live --no-agent ...       # ablation: without the verification agent
 
 Sheets are synthetic, with planted errors cycling through every error kind plus clean sheets.
@@ -48,13 +49,14 @@ def main(argv=None):
     ap.add_argument("--rows", type=int, default=2)
     ap.add_argument("--scan-noise", action="store_true")
     ap.add_argument("--no-agent", action="store_true")
+    ap.add_argument("--localizer", choices=["sam", "muse"], default=None, help="default: PID_LOCALIZER env or sam")
     ap.add_argument("--out", default="eval/results")
     args = ap.parse_args(argv)
 
     rules = default_rules()
     cfg = PipelineConfig(run_agent=not args.no_agent)
     rows = []
-    live_pipe = build_live_pipeline(rules=rules, cfg=cfg) if args.mode == "live" else None
+    live_pipe = build_live_pipeline(rules=rules, cfg=cfg, localizer=args.localizer) if args.mode == "live" else None
 
     for seed, errors in plan_sheets(args.n, args.split):
         sheet = make_sheet(seed=seed, n_rows=args.rows, errors=errors, scan_noise=args.scan_noise)
@@ -98,7 +100,7 @@ def main(argv=None):
     print("\n" + json.dumps(summary, indent=2))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = f"{args.mode}_{args.split}{'_noagent' if args.no_agent else ''}{'_noise' if args.scan_noise else ''}"
+    tag = f"{args.mode}_{args.split}{'_' + args.localizer if args.localizer else ''}{'_noagent' if args.no_agent else ''}{'_noise' if args.scan_noise else ''}"
     (out / f"{tag}.json").write_text(json.dumps({"summary": summary, "sheets": rows}, indent=2))
     print(f"wrote {out / (tag + '.json')}")
 

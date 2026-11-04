@@ -128,16 +128,19 @@ def extract_json(text: str) -> Any:
     return json.loads(t[start : end + 1])
 
 
-def image_part(img: Image.Image, max_side: int = 1280, detail: str = "high") -> dict:
+def image_data_url(img: Image.Image, max_side: Optional[int] = None) -> str:
     img = img.convert("RGB")
     w, h = img.size
-    if max(w, h) > max_side:
+    if max_side and max(w, h) > max_side:
         s = max_side / max(w, h)
         img = img.resize((max(1, int(w * s)), max(1, int(h * s))), Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    return {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": detail}}
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def image_part(img: Image.Image, max_side: int = 1280, detail: str = "high") -> dict:
+    return {"type": "image_url", "image_url": {"url": image_data_url(img, max_side), "detail": detail}}
 
 
 class ChatClient:
@@ -225,9 +228,26 @@ class ChatClient:
             cache_file.write_text(json.dumps(data))
         return self._parse(data, cached=False)
 
-    def _post(self, payload: dict) -> dict:
+    def post_raw(self, path: str, payload: dict, *, purpose: str = "", fixed_cost: float = 0.0, use_cache: bool = True) -> dict:
+        """POST to another endpoint on the same provider (e.g. /responses for SAM) with the same cache, retries and ledger.
+
+        `fixed_cost` is the estimated USD price of one call, for endpoints that bill per image rather than per token.
+        """
+        key = hashlib.sha256((path + json.dumps(payload, sort_keys=True)).encode()).hexdigest()
+        cache_file = self.cache_dir / f"{key}.json" if self.cache_dir else None
+        if use_cache and cache_file and cache_file.exists():
+            self.ledger.add(CallRecord(purpose, self.model, 0.0, 0, 0, 0.0, True))
+            return json.loads(cache_file.read_text())
+        t0 = time.time()
+        data = self._post(payload, path)
+        self.ledger.add(CallRecord(purpose, self.model, time.time() - t0, 0, 0, fixed_cost, False))
+        if use_cache and cache_file:
+            cache_file.write_text(json.dumps(data))
+        return data
+
+    def _post(self, payload: dict, path: str = "chat/completions") -> dict:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        url = f"{self.base_url}/chat/completions"
+        url = f"{self.base_url}/{path}"
         dropped_reasoning = False
         for attempt in range(self.max_retries + 1):
             try:

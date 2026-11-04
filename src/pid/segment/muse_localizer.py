@@ -4,8 +4,7 @@ The sheet is cut into overlapping tiles.  Each tile is sent to Muse Spark Open w
 symbol classes and a request for tight pixel boxes in strict JSON.  Boxes from all tiles are mapped
 back to sheet coordinates, de-duplicated, and passed on to the classifier and the line tracer.
 
-This is the Muse-native design: using the same model for localizing and reading means one endpoint to host and monitor, and drawings
-go to a single service.  How *accurate* its boxes are is an empirical question: measure it with
+This is the alternative to the SAM 3.1 localizer (`meta_sam.py`): the same model that reads the symbols also finds them.  How *accurate* its boxes are is an empirical question: measure it with
 `python -m pid.smoke localize` (box recall against generated ground truth) before relying on it.
 """
 from __future__ import annotations
